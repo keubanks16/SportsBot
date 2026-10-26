@@ -1,6 +1,12 @@
 // SportsBot UI — fetches ESPN data in the browser and renders upset picks.
 const API = "https://site.api.espn.com/apis/site/v2/sports/";
-const state = { games: [], weeks: { nfl: null, ncaa: null }, offset: 0, league: "all", view: "picks", loading: false };
+const state = { games: [], weeks: { nfl: null, ncaa: null }, offset: 0, league: "all", view: "picks", day: "week", loading: false };
+
+// Local calendar date, e.g. "2026-10-26"
+function dayKey(d) {
+  d = new Date(d);
+  return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+}
 
 const $ = s => document.querySelector(s);
 
@@ -70,12 +76,14 @@ function weekLabel() {
 
 function render() {
   $("#week").textContent = weekLabel();
-  let games = state.games.filter(g => g.a);
+  const today = dayKey(Date.now());
+  const inDay = g => state.day === "week" || dayKey(g.date) === today;
+  let games = state.games.filter(g => g.a && inDay(g));
   const order = { strong: 0, watch: 1, longshot: 2, none: 3 };
   games.sort((x, y) => order[x.a.tier] - order[y.a.tier] || y.a.score - x.a.score);
   if (state.view === "picks") games = games.filter(g => g.a.tier !== "none");
 
-  const all = state.games.filter(g => g.a);
+  const all = state.games.filter(g => g.a && inDay(g));
   const picks = all.filter(g => g.a.tier === "strong" || g.a.tier === "watch");
   const done = picks.filter(g => g.a.result);
   const hits = done.filter(g => g.a.result === "upset").length;
@@ -87,8 +95,10 @@ function render() {
     (done.length ? ` · Picks hit ${hits}/${done.length}` : "") +
     (allDone.length ? ` · ${allUpsets} upsets so far` : "");
 
-  $("#list").innerHTML = games.length ? games.map(card).join("") :
-    `<p class="empty">No upset alerts for this slate. Switch to “All games” to see every matchup.</p>`;
+  let empty = "No upset alerts for this slate. Switch to “All games” to see every matchup.";
+  if (state.day === "today" && !all.length) empty = "No games today. Switch to “All week” to see the full slate.";
+  else if (state.day === "today") empty = "No upset alerts today. Switch to “All games” to see today's matchups.";
+  $("#list").innerHTML = games.length ? games.map(card).join("") : `<p class="empty">${empty}</p>`;
 }
 
 const TIER = { strong: ["🔥 Upset alert", "strong"], watch: ["⚠️ Upset watch", "watch"], longshot: ["🎯 Long shot", "long"], none: ["Favorite holds", "none"] };
@@ -143,6 +153,7 @@ function seg(id, key) {
 
 seg("leagueSeg", "league");
 seg("viewSeg", "view");
+seg("daySeg", "day");
 $("#prev").onclick = () => { state.offset--; load(); };
 $("#next").onclick = () => { state.offset++; load(); };
 $("#refresh").onclick = load;
